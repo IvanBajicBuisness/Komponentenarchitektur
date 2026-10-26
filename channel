@@ -1,0 +1,80 @@
+#include <iostream>
+#include <unistd.h>
+#include <wait.h>
+#include <string.h>
+
+// String wird übergeben, Länge zurück. Einträge nur in parent.
+
+struct Person{
+    const char* name;
+    int length;
+};
+
+
+int main()
+{
+    int fdParentToChild[2], fdChildToParent[2];
+
+    pipe(fdParentToChild);
+    pipe(fdChildToParent);
+
+    pid_t pid = fork();
+
+    if(pid < 0)
+    {
+        std::cout << "Fork failed" << std::endl;
+        return 0;
+    }
+
+    else
+    {
+        if(pid == 0)
+        {
+            //child
+            close(fdParentToChild[1]);
+            close(fdChildToParent[0]);
+
+            char buffer[100];
+            int length;
+
+            read(fdParentToChild[0], &buffer, sizeof(buffer));
+
+            length = strlen(buffer);
+
+            write(fdChildToParent[1], &length, sizeof(length));
+
+            close(fdParentToChild[0]);
+            close(fdChildToParent[1]);
+
+            return 0;
+        }
+
+        else
+        {
+            //parent
+
+            close(fdParentToChild[0]);
+            close(fdChildToParent[1]);
+
+            int length;
+
+            Person Luka;
+            Luka.name = "Luka";
+
+            write(fdParentToChild[1], Luka.name, strlen(Luka.name)+1);
+            read(fdChildToParent[0], &length, sizeof(length));
+
+            Luka.length = length;
+
+            std::cout << "name: " << Luka.name << std::endl;
+            std::cout << "length: " << Luka.length << std::endl;
+
+            close(fdParentToChild[1]);
+            close(fdChildToParent[0]);
+
+            wait(NULL);
+
+        }
+    }
+    return 0;
+}
