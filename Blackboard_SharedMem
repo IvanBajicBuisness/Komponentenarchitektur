@@ -1,0 +1,73 @@
+
+#include <iostream>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <semaphore.h>
+
+struct Blackboard
+{
+    int value;
+    sem_t mutex;
+};
+
+int main()
+{
+    // Shared Memory erstellen
+    int fd = shm_open("/blackboard", O_CREAT | O_RDWR, 0666);
+
+    ftruncate(fd, sizeof(Blackboard));
+
+    Blackboard* bb = (Blackboard*) mmap(
+        NULL,
+        sizeof(Blackboard),
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        0
+    );
+
+    close(fd);
+
+    bb->value = 0;
+    sem_init(&bb->mutex, 1, 1);
+
+    pid_t pid = fork();
+
+    if(pid == 0)
+    {
+        // Kind: Empfaenger
+        for(int i = 0; i < 40; i++)
+        {
+            sem_wait(&bb->mutex);
+            int n = bb->value;
+            sem_post(&bb->mutex);
+
+            std::cout << "Receiver: " << n << std::endl;
+            usleep(50000);
+        }
+
+        munmap(bb, sizeof(Blackboard));
+        return 0;
+    }
+
+    // Elternprozess: Sender
+    for(int i = 0; i < 20; i++)
+    {
+        sem_wait(&bb->mutex);
+        bb->value = i;
+        sem_post(&bb->mutex);
+
+        usleep(100000);
+    }
+
+    waitpid(pid, NULL, 0);
+
+    sem_destroy(&bb->mutex);
+    munmap(bb, sizeof(Blackboard));
+    shm_unlink("/blackboard");
+
+    return 0;
+}
